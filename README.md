@@ -6,7 +6,7 @@ Cloud Platforms: Azure (Data Factory, Synapse), AWS (Glue, Redshift, S3), Databr
 Data Pipelines: Batch/streaming pipelines (Apache Spark), workflow orchestration (Ctrl-M, Airflow, Azure Data Factory).
 Languages: Python (PySpark), SQL (advanced queries, optimization).
 Databases: Relational (Oracle, SQL Server,Teradata PostgreSQL) and NoSQL (MongoDB).
-DevOps: CI/CD (GitHub Actions), IaC (Terraform).
+DevOps: CI/CD (GitHub Actions), IaC (Terraform). 
 
 What I Deliver:
 ✔ End-to-end data architecture (lakehouses, warehouses, medallion architecture).
