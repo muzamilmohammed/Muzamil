@@ -14,12 +14,12 @@
   - Snowflake (Warehousing, Snowpark)  
 - **Data Pipelines:**  
   - Batch/streaming (Apache Spark, Kafka)  
-  - Orchestration (Airflow, Azure Data Factory)  
-- **Languages:** Python (Pandas, PySpark), SQL (advanced queries)  
+  - Orchestration (Ctrl-M,Airflow, Azure Data Factory)  
+- **Languages:** Python (PySpark), SQL (advanced queries,optimisation)  
 - **Databases:**  
-  - Relational: PostgreSQL, MySQL, Oracle, SQL Server  
-  - NoSQL: MongoDB, Cosmos DB  
-- **DevOps:** CI/CD (GitHub Actions), IaC (Terraform), Docker  
+  - Relational: Oracle, SQL Server, Teradata, PostgreSQL   
+  - NoSQL: MongoDB   
+- **DevOps:** CI/CD (GitHub Actions), IaC (Terraform)   
 
 #### **What I Deliver**  
 ✔ **End-to-end data architecture** (lakehouses, medallion architecture)  
