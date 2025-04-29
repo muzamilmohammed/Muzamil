@@ -2,11 +2,11 @@
 ### **Data Engineer**  
 **Building Scalable Data Pipelines & Analytics Solutions**  
 
-#### **Experience**  
+#### **<span style="color: #2ecc71;">Experience</span>**
 - Specialize in designing, optimizing, and maintaining **data pipelines** and **ETL/ELT workflows** (cloud/on-prem).  
 - Transform raw data into **actionable insights** for data-driven decisions.  
 
-#### **Core Skills**  
+#### **<span style="color: #e74c3c;">Core Skills</span>** 
 - **Cloud Platforms:**  
   - Azure (Data Factory, Synapse)  
   - AWS (Glue, Redshift, S3)  
@@ -21,7 +21,7 @@
   - NoSQL: MongoDB   
 - **DevOps:** CI/CD (GitHub Actions), IaC (Terraform)   
 
-#### **What I Deliver**  
+#### **<span style="color: #f1c40f;">What I Deliver</span>** 
 ✔ **End-to-end data architecture** (lakehouses, medallion architecture)  
 ✔ **High-performance ETL pipelines** with monitoring/error handling  
 ✔ **Data modeling** (star schema, SCD)  
