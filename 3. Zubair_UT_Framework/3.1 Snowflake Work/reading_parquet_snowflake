@@ -1,0 +1,60 @@
+USE DATABASE DEV;
+USE SCHEMA DATASCIENCE;
+
+CREATE OR REPLACE FILE FORMAT my_parquet_format
+  TYPE = 'PARQUET';
+
+CREATE OR REPLACE STAGE bronze_xml
+  URL = 's3://datascience-output-bucket/bronze/xml/'
+  STORAGE_INTEGRATION = aws_snowflake_connect
+  FILE_FORMAT = my_parquet_format;
+
+LIST @DEV.DATASCIENCE.BRONZE_XML
+
+SELECT * FROM @DEV.DATASCIENCE.BRONZE_XML
+
+CREATE OR REPLACE TABLE customers (
+  customer_id   INT,
+  customer_name STRING,
+  start_date TIMESTAMP_NTZ
+);
+
+CREATE OR REPLACE TABLE products (
+  product_id    STRING,         
+  product_name  STRING,
+  start_date    TIMESTAMP_NTZ
+);
+
+CREATE OR REPLACE TABLE orders (
+  order_id     STRING,        
+  customer_id  INT,
+  product_id   STRING,
+  start_date   TIMESTAMP_NTZ
+);
+
+--unable to create dynamic dates looking for quite a long time now 
+COPY INTO customers
+FROM @DEV.DATASCIENCE.BRONZE_XML/2025/Jul/05/                    
+FILE_FORMAT = (FORMAT_NAME = my_parquet_format)
+MATCH_BY_COLUMN_NAME = CASE_INSENSITIVE
+PATTERN = '.*Customers_.*\\.parquet'
+
+COPY INTO products
+FROM @DEV.DATASCIENCE.BRONZE_XML/2025/Jul/05/
+FILE_FORMAT = (FORMAT_NAME = my_parquet_format)
+MATCH_BY_COLUMN_NAME = CASE_INSENSITIVE
+PATTERN = '.*Products_.*\\.parquet';
+
+COPY INTO orders
+FROM @DEV.DATASCIENCE.BRONZE_XML/2025/Jul/05/
+FILE_FORMAT = (FORMAT_NAME = my_parquet_format)
+MATCH_BY_COLUMN_NAME = CASE_INSENSITIVE
+PATTERN = '.*Orders_.*\\.parquet';
+
+
+SELECT * FROM customers LIMIT 10;
+SELECT * FROM products LIMIT 10;
+SELECT * FROM orders LIMIT 10;
+
+
+

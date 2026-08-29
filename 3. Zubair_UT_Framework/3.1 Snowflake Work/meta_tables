@@ -1,0 +1,133 @@
+What we Want To Achieve
+We have 15 Excel files or table definitions like:
+Customer_1, Customer_2, ..., Customer_15, each with:
+•	customer_id
+•	customer_name
+•	start_date
+We want to:
+1.	Document these tables in a central metadata Excel file
+2.	Upload the metadata into Snowflake
+3.	Automatically generate and create all 15 tables in Snowflake using dynamic SQL
+STEP-BY-STEP PROCESS (BEGINNING TO END) – FOR MANUAL UPLOAD
+Step 1: Create the Metadata Excel File
+Open a new Excel file. Name it: table_metadata.xlsx
+Create 3 columns:
+table_name	column_name	data_type
+Customer_1	customer_id	INT
+Customer_1	customer_name	STRING
+Customer_1	start_date	TIMESTAMP_NTZ
+Customer_2	customer_id	INT
+Customer_2	customer_name	STRING
+Customer_2	start_date	TIMESTAMP_NTZ
+...	...	...
+Customer_15	customer_id	INT
+Customer_15	customer_name	STRING
+Customer_15	start_date	TIMESTAMP_NTZ
+Save as: table_metadata.csv
+Step 2: Log in to Snowflake
+1.	Open Snowsight (Snowflake Web UI)
+2.	Choose your working:
+o	Warehouse
+o	Database (e.g., dev)
+o	Schema (e.g., datascience)
+Step 3: Create Metadata Table in Snowflake
+Run this SQL:
+CREATE OR REPLACE TABLE metadata_table_definitions (
+  table_name STRING,
+  column_name STRING,
+  data_type STRING
+);
+
+Step 4: Upload table_metadata.csv into Snowflake
+Option A: Use Snowsight Upload UI
+1.	Go to the metadata_table_definitions table
+2.	Click “Load Data”
+3.	Upload table_metadata.csv
+4.	Choose:
+o	Field Delimiter: comma (,)
+o	Skip Header: Yes (1 row)
+Step 5: Verify Metadata Loaded
+SELECT * FROM metadata_table_definitions ORDER BY table_name, column_name;
+ You should see 45 rows (3 columns x 15 tables).
+Step 6: Generate DDL for All Tables
+SELECT
+  'CREATE OR REPLACE TABLE ' || table_name || ' (\n' ||
+  LISTAGG(column_name || ' ' || data_type, ',\n') 
+    WITHIN GROUP (ORDER BY ordinal_position) || '\n);' AS ddl_script
+FROM (
+  SELECT 
+    table_name, column_name, data_type,
+    ROW_NUMBER() OVER (PARTITION BY table_name ORDER BY column_name) AS ordinal_position
+  FROM metadata_table_definitions
+) grouped
+GROUP BY table_name;
+✅ This returns one row per table, with the full CREATE TABLE statement.
+Step 7: Manually Copy-Paste and Run DDLs
+In Snowsight, copy all the rows from the ddl_script column.
+Paste them into a new SQL worksheet.You’ll have a script like this:
+CREATE OR REPLACE TABLE CUSTOMER_1 (
+ customer_id INT,
+ customer_name STRING,
+ start_date TIMESTAMP_NTZ
+);
+
+CREATE OR REPLACE TABLE CUSTOMER_2 (
+  customer_id INT,
+  customer_name STRING,
+  start_date TIMESTAMP_NTZ
+);
+
+-- ... repeat for all 15
+Click Run.
+This will create all 15 tables in your Snowflake database.
+Step 8: Confirm Your Tables Were Created
+Run this in your worksheet:
+SHOW TABLES;
+Or filter by name:
+SELECT * FROM INFORMATION_SCHEMA.TABLES
+WHERE TABLE_NAME ILIKE 'CUSTOMER_%'
+ORDER BY TABLE_NAME;
+You should now see CUSTOMER_1 to CUSTOMER_15 in your database.
+✅ Step 9: Manually Load CSV Data into Snowflake Tables
+📂 Prerequisites:
+You should have:
+•	15 CSV files named like:
+Customer_1.csv, Customer_2.csv, ..., Customer_15.csv
+•	Each CSV file should have columns matching the table schema, in this order:
+customer_id, customer_name, start_date
+Repeat the Steps Below for Each Table
+Step 9.1: Go to the Snowflake Table in Snowsight
+1.	Log in to Snowsight (Snowflake Web UI)
+2.	Go to:
+o	Data tab on the left menu
+o	Select your Database and Schema
+o	Find the table CUSTOMER_1 (or the one you’re loading)
+Step 9.2: Use the “Load Data” Feature
+1.	Click on the table name (e.g., CUSTOMER_1)
+2.	Click the “Load Data” button at the top right
+3.	Click “Upload a file”
+4.	Choose Customer_1.csv from your computer
+Step 9.3: Configure the Upload
+1.	Confirm file format:
+o	File Format Type: CSV
+o	Field delimiter: , (comma)
+o	Skip Header: 1 row (if your file has headers)
+2.	Click “Next”
+3.	Snowflake will auto-detect column names and types
+o	✅ Check that the column names and order match your table
+Step 9.4: Load the File
+1.	Click “Load Data”
+2.	Wait for the success confirmation
+✅ Done! Your data is now in the CUSTOMER_1 table.
+Step 9.5: Repeat for Remaining Tables
+Repeat steps 9.1 to 9.4 for:
+•	CUSTOMER_2 → load Customer_2.csv
+•	CUSTOMER_3 → load Customer_3.csv
+•	...
+•	CUSTOMER_15 → load Customer_15.csv
+Each table gets its own corresponding CSV data.
+Step 9.6: Verify the Data
+Run a quick query in Snowsight to validate:
+SELECT * FROM CUSTOMER_1 LIMIT 10;
+Repeat for a few tables to confirm the upload.
+

@@ -1,0 +1,23 @@
+{
+	"name": "csv_to_parquet_sink",
+	"properties": {
+		"linkedServiceName": {
+			"referenceName": "ADLSGen2_LinkedService",
+			"type": "LinkedServiceReference"
+		},
+		"annotations": [],
+		"type": "Parquet",
+		"typeProperties": {
+			"location": {
+				"type": "AzureBlobFSLocation",
+				"folderPath": {
+					"value": "bronze/Full_load/@{formatDateTime(utcNow(), 'yyyy')}/@{formatDateTime(utcNow(), 'MMM')}/@{formatDateTime(utcNow(),'dd')}",
+					"type": "Expression"
+				},
+				"fileSystem": "output"
+			},
+			"compressionCodec": "snappy"
+		},
+		"schema": []
+	}
+}
