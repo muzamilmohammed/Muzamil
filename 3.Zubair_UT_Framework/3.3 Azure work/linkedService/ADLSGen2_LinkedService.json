@@ -1,0 +1,19 @@
+{
+	"name": "ADLSGen2_LinkedService",
+	"type": "Microsoft.DataFactory/factories/linkedservices",
+	"properties": {
+		"annotations": [],
+		"type": "AzureBlobFS",
+		"typeProperties": {
+			"url": "https://datasciencestoragelab.dfs.core.windows.net",
+			"accountKey": {
+				"type": "AzureKeyVaultSecret",
+				"store": {
+					"referenceName": "KeyVault_LinkedService",
+					"type": "LinkedServiceReference"
+				},
+				"secretName": "ADLS-Account-Key"
+			}
+		}
+	}
+}

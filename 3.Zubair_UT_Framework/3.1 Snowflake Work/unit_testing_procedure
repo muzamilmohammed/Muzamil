@@ -1,0 +1,538 @@
+UNIT TESTING FRAMEWORK (Procedure)
+STEP 0 
+Prerequisites
+We need to have the following before proceeding with unit testing:
+•	VS Code installed
+•	Python installed (3.10+ recommended)
+•	Snowflake account access as “accountadmin”
+•	Snowflake username, password, and account name with location
+•	Database and schema access
+•	At least one test table in Snowflake (bronze_customers_delta and silver_customers_delta in our case and similar for orders and products table)
+STEP 1 
+Create Project Structure
+•	Create a folder in your local machine: “snowflake_ut_framework”
+•	Open or select this folder in VS Code.
+•	Create this folder structure in VS Code:
+snowflake_ut_framework/
+│
+├── config/
+├── input/
+├── engine/
+├── reports/
+├── logs/
+└── main.py
+
+STEP 2 
+Create Virtual Environment
+•	Open a terminal in VS Code.
+•	Run: python -m venv venv
+•	Activate: 
+For Windows:  venv\Scripts\activate (run Windows PowerShell script)
+For Mac/Linux:  source venv/bin/activate
+•	After activation, you will see (venv) at the beginning of the folder path in the terminal. For example: (venv) PS C:\snowflake_ut_framework>
+STEP 3 
+Install Required Packages
+•	Run one after another (keeping in the same environment):
+pip install pandas
+pip install openpyxl
+pip install pyyaml
+pip install snowflake-snowpark-python
+pip install xlsxwriter
+•	Verify the packages with: pip list
+you will see the list of all the packages installed.
+STEP 4 
+Create Tables in Snowflake
+Before building a testing framework, create something to test. In our case we already have tables in snowflake warehouse as:
+•	bronze_customers_delta and silver_customers_delta
+•	bronze_products_delta and silver_products_delta
+•	bronze_orders_delta and silver_orders_delta
+These tables already exist in Snowflake and also contain data.
+STEP 5 
+Create Configuration File
+•	Inside the folder: config/
+•	Create: framework_config.yaml
+•	In the YAML file, write:
+environment: DEV
+
+snowflake:
+  account: your account 
+  user: your username to log in to your Snowflake account
+  password: your password to log in to your Snowflake account
+  warehouse: COMPUTE_WH (your warehouse name)
+  database: TEST_DB (your database name)
+  schema: PUBLIC (your schema name)
+  role: SYSADMIN/ ACCOUNTADMIN
+•	Save the file
+•	Note: use this SELECT CURRENT_ACCOUNT(); in snowflake SQL worksheet to get account name and write in this format (Example: ab12345.ap-southeast-1)
+STEP 6  
+Create First Python Program
+•	Inside “main.py” write a simple script to check if it is working
+•	Write:
+print("Framework Started")
+•	In the terminal run “python main.py”
+•	You will see this output: Framework Started
+
+STEP 7 
+Read YAML File
+•	In the already created folder named “engine”, create a file “config_reader.py” as:
+engine/config_reader.py
+•	Write this code to check if we can read yaml file.
+import yaml
+
+def read_config(config_path):
+
+    with open(config_path, "r") as file:
+        config = yaml.safe_load(file)
+
+    return config
+
+•	In this code when Python sees: with open(config_path, "r")
+it opens: framework_config.yaml
+•	Then: yaml.safe_load() converts:
+environment: DEV into:
+{
+   "environment": "DEV"
+}
+           Python can now use it.
+•	Open “main.py” and add
+from engine.config_reader import read_config
+
+config = read_config(
+    "config/framework_config.yaml"
+)
+
+print(config)
+
+•	Run the above script and your expected output (sample values) will be:
+
+{
+ 'environment': 'DEV',
+ 'snowflake': {
+     'account': 'xy12345.ap-soitheast-1',
+     'user': 'zubair',
+     'password': 'password123',
+     'warehouse': 'COMPUTE_WH',
+     'database': 'TEST_DB',
+     'schema': 'PUBLIC',
+     'role': 'SYSADMIN'
+ }
+}
+
+This means yaml file is found, read successfully and data is converted to python dictionary. 
+•	To access individual values modify “main.py” as: 
+from engine.config_reader import read_config
+
+config = read_config(
+    "config/framework_config.yaml"
+)
+
+print(config["environment"])
+
+print(config["snowflake"]["database"])
+
+print(config["snowflake"]["schema"])
+We will get output (sample example) as: 
+DEV
+TEST_DB
+PUBLIC
+•	These values are necessary to extract (with python), as these values are required to connect to snowflake instead of hard coding. 
+STEP 8 
+Connect to Snowflake
+•	Inside the folder “engine” create “connection_manager.py” which will help in creating snowflake connection.
+•	Run in terminal “pip show snowflake-snowpark-python” to check package details.
+•	In “connection_manager.py” write the script”
+from snowflake.snowpark import Session
+
+def create_session(config):
+
+    connection_parameters = {
+        "account": config["snowflake"]["account"],
+        "user": config["snowflake"]["user"],
+        "password": config["snowflake"]["password"],
+        "warehouse": config["snowflake"]["warehouse"],
+        "database": config["snowflake"]["database"],
+        "schema": config["snowflake"]["schema"],
+        "role": config["snowflake"]["role"]
+    }
+    session = Session.builder.configs(
+        connection_parameters
+    ).create()
+
+    return session
+
+•	This code will take snowflake credentials and convert it into connection parameters which snowflake can understand. Then using “Session.builder.configs(...).create()” , it will create a connection.
+•	Now modify “main.py” such that it can connect with snowflake:
+from engine.config_reader import read_config
+from engine.connection_manager import create_session
+
+# Read Config
+config = read_config(
+    "config/framework_config.yaml"
+)
+
+# Create Session
+session = create_session(config)
+
+print("Snowflake Connection Successful")
+
+•	Run the program and if everything is correct then you will see output as “Snowflake Connection Successful”
+•	Validate Connection: After creating a session we need to validate the connection. For this we can execute a query by updating main.py ass:
+from engine.config_reader import read_config
+from engine.connection_manager import create_session
+
+config = read_config(
+    "config/framework_config.yaml"
+)
+
+session = create_session(config)
+
+result = session.sql(
+    "SELECT CURRENT_VERSION()"
+).collect()
+
+print(result)
+
+Here we can expected output as:  [Row(CURRENT_VERSION()='9.x.x')]. This proves that connection is valid.
+•	For better query validation, run:
+result = session.sql("""
+SELECT
+CURRENT_USER(),
+CURRENT_DATABASE(),
+CURRENT_SCHEMA(),
+CURRENT_WAREHOUSE()
+""").collect()
+
+print(result)
+Here we can expect Output (sample example) like:
+[
+ Row(
+   CURRENT_USER()='ZUBAIR',
+   CURRENT_DATABASE()='DATA_PIPELINE_DB',
+   CURRENT_SCHEMA()='PUBLIC',
+   CURRENT_WAREHOUSE()='COMPUTE_WH'
+ )
+]
+
+session.close()
+Final flow:
+config = read_config(...)
+session = create_session(config)
+
+result = session.sql(
+    "SELECT CURRENT_VERSION()"
+).collect()
+
+print(result)
+
+session.close()
+STEP 9 
+Create Excel Input File
+•	Create excel file “ut_input.xlxs” in input folder as: input/ut_input.xlsx
+•	Update the yaml file as:
+
+environment: DEV
+
+snowflake:
+  account: ab12345.ap-southeast-1
+  user: your username
+  password: your password
+  warehouse: COMPUTE_WH
+  database: DEV
+  schema: DATASCIENCE
+  role: ACCOUNTADMIN
+
+files:
+  excel_path: input/ut_input.xlsx
+
+•	Make the structure of your excel file. Here is the example:
+
+test_case_id	source_table	target_table	validation_type	validation_column	business_key
+TC001	bronze_customers_delta	silver_customers_delta	row_count		
+TC002	bronze_customers_delta	silver_customers_delta	null_check	customer_id	
+TC003	bronze_customers_delta	silver_customers_delta	duplicate_check		customer_id
+TC004	bronze_customers_delta	silver_customers_delta	source_target_compare		customer_id
+TC005	bronze_customers_delta	silver_customers_delta	date_check	load_date	
+TC006	bronze_orders_delta	silver_orders_delta	row_count		
+TC007	bronze_orders_delta	silver_orders_delta	duplicate_check		order_id
+TC008	bronze_orders_delta	silver_orders_delta	source_target_compare		order_id
+TC009	bronze_products_delta	silver_products_delta	row_count		
+TC010	bronze_products_delta	silver_products_delta	duplicate_check		product_id
+
+STEP 10
+Read Excel in Python
+•	Create a file with name “excel_reader.py” in engine folder as:
+engine/excel_reader.py
+•	In python file “excel_reader.py” write the script as:
+import pandas as pd
+
+def read_excel_file(excel_path):
+
+    df = pd.read_excel(
+        excel_path,
+        sheet_name=0
+    )
+
+    return df
+
+•	In the “main.py” file add the following:
+
+from engine.config_reader import read_config
+from engine.connection_manager import create_session
+from engine.excel_reader import read_excel_file
+
+config = read_config(
+    "config/framework_config.yaml"
+)
+
+session = create_session(config)
+
+excel_path = config["files"]["excel_path"]
+
+df = read_excel_file(excel_path)
+
+print(df)
+
+session.close()
+
+This script will print all the test cases (10 in this case).
+
+•	Loop through the rows you can read it in much better way. So, after: 
+print(df), write:
+
+
+for index, row in df.iterrows():
+
+    print("\nTest Case:", row["test_case_id"])
+    print("Source Table:", row["source_table"])
+    print("Target Table:", row["target_table"])
+    print("Validation Type:", row["validation_type"])
+
+•	Here you will see output as:
+Test Case: TC001
+Source Table: bronze_customers_delta
+Target Table: silver_customers_delta
+Validation Type: row_count
+
+Test Case: TC002
+Source Table: bronze_customers_delta
+Target Table: silver_customers_delta
+Validation Type: null_check
+
+And so on……………. with listing other test cases. This loop will help function the framework properly.  
+STEP 11 
+Metadata Validation
+Before running any Snowflake query, we need to verify two things: 
+Excel Structure is Correct and Excel Data is Correct
+If not then Framework should stop Execution.
+•	Start with creating a new file name “metadata_validator.py” in engine folder as:
+engine/ metadata_validator.py
+•	Create a simple function to check if it is working when called from “main.py”. The function is as:
+def validate_metadata(df):
+    print("Metadata Validation Started")
+    return True
+•	Call It From “main.py” as:
+Add import:
+from engine.metadata_validator import validate_metadata
+After reading Excel files (df = read_excel_file(excel_path) ), add this:
+validation_status = validate_metadata(df)
+print(validation_status)
+•	Run in the terminal “python main.py”. We will get output as: “Metadata Validation Started”, which means that “metadata_validator.py” is connected properly.
+•	Final script for metadata_validator.py will be: 
+
+
+def validate_metadata(df):
+    """
+    Validate Excel metadata before executing any Snowflake queries.
+    """
+
+    print("\nStarting Metadata Validation...\n")
+
+    # =====================================================
+    # 1. Required Columns Validation
+    # =====================================================
+
+    required_columns = [
+        "test_case_id",
+        "source_table",
+        "target_table",
+        "validation_type",
+        "validation_column",
+        "business_key"
+    ]
+
+    missing_columns = []
+
+    for column in required_columns:
+        if column not in df.columns:
+            missing_columns.append(column)
+
+    if missing_columns:
+        raise Exception(
+            f"Missing Required Columns: {', '.join(missing_columns)}"
+        )
+
+    print("✓ Required Columns Validation Passed")
+
+    # =====================================================
+    # 2. Supported Validation Types
+    # =====================================================
+
+    allowed_validations = [
+        "row_count",
+        "null_check",
+        "duplicate_check",
+        "source_target_compare",
+        "aggregate_check",
+        "date_check"
+    ]
+
+    # =====================================================
+    # 3. Row Level Validation
+    # =====================================================
+
+    for index, row in df.iterrows():
+
+        test_case_id = str(row["test_case_id"]).strip()
+        source_table = str(row["source_table"]).strip()
+        target_table = str(row["target_table"]).strip()
+        validation_type = str(row["validation_type"]).strip()
+
+        validation_column = str(
+            row["validation_column"]
+        ).strip()
+
+        business_key = str(
+            row["business_key"]
+        ).strip()
+
+        # ---------------------------------------------
+        # Mandatory Fields Validation
+        # ---------------------------------------------
+
+        if not test_case_id:
+            raise Exception(
+                f"Row {index+2}: test_case_id is blank"
+            )
+
+        if not source_table:
+            raise Exception(
+                f"{test_case_id}: source_table is blank"
+            )
+
+        if not target_table:
+            raise Exception(
+                f"{test_case_id}: target_table is blank"
+            )
+
+        if not validation_type:
+            raise Exception(
+                f"{test_case_id}: validation_type is blank"
+            )
+
+        # ---------------------------------------------
+        # Validation Type Check
+        # ---------------------------------------------
+
+        if validation_type not in allowed_validations:
+            raise Exception(
+                f"{test_case_id}: Invalid validation_type "
+                f"'{validation_type}'"
+            )
+
+        # ---------------------------------------------
+        # business_key Validation
+        # ---------------------------------------------
+
+        if validation_type in [
+            "duplicate_check",
+            "source_target_compare"
+        ]:
+
+            if (
+                business_key == ""
+                or
+                business_key.lower() == "nan"
+            ):
+                raise Exception(
+                    f"{test_case_id}: "
+                    f"business_key is mandatory for "
+                    f"{validation_type}"
+                )
+
+        # ---------------------------------------------
+        # validation_column Validation
+        # ---------------------------------------------
+
+        if validation_type in [
+            "null_check",
+            "aggregate_check",
+            "date_check"
+        ]:
+
+            if (
+                validation_column == ""
+                or
+                validation_column.lower() == "nan"
+            ):
+                raise Exception(
+                    f"{test_case_id}: "
+                    f"validation_column is mandatory for "
+                    f"{validation_type}"
+                )
+
+    print("✓ Validation Type Checks Passed")
+    print("✓ business_key Validation Passed")
+    print("✓ validation_column Validation Passed")
+
+    # =====================================================
+    # 4. Duplicate Test Case Validation
+    # =====================================================
+
+    duplicate_rows = df[
+        df.duplicated(
+            subset=[
+                "test_case_id"
+            ],
+            keep=False
+        )
+    ]
+
+    if len(duplicate_rows) > 0:
+
+        duplicate_test_cases = (
+            duplicate_rows["test_case_id"]
+            .unique()
+            .tolist()
+        )
+
+        raise Exception(
+            "Duplicate test_case_id found: "
+            + ", ".join(
+                map(str, duplicate_test_cases)
+            )
+        )
+
+    print("✓ Duplicate Test Case Validation Passed")
+
+    print("\nMetadata Validation Successful\n")
+
+    return True
+
+•	Now run your script main.py again, if everything is correct you will see output as:
+Starting Metadata Validation...
+
+✓ Required Columns Validation Passed
+✓ Validation Type Checks Passed
+✓ business_key Validation Passed
+✓ validation_column Validation Passed
+✓ Duplicate Test Case Validation Passed
+
+Metadata Validation Successful
+
+True
+•	Now try to delete one column and see results if it is working correctly or not. Deleting a column will throw an error.
+STEP 12 
+Query builder
+
+
+

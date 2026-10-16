@@ -1,0 +1,39 @@
+{
+	"name": "csv_source",
+	"properties": {
+		"linkedServiceName": {
+			"referenceName": "BlobStorage_LinkedService",
+			"type": "LinkedServiceReference"
+		},
+		"annotations": [],
+		"type": "DelimitedText",
+		"typeProperties": {
+			"location": {
+				"type": "AzureBlobStorageLocation",
+				"folderPath": {
+					"value": "@{concat('landing/Full_load/', formatDateTime(utcNow(),'yyyy'),'/',formatDateTime(utcNow(),'MMM'),'/',formatDateTime(utcNow(),'dd'))}",
+					"type": "Expression"
+				},
+				"container": "input"
+			},
+			"columnDelimiter": ",",
+			"escapeChar": "\\",
+			"firstRowAsHeader": true,
+			"quoteChar": "\""
+		},
+		"schema": [
+			{
+				"name": "CustomerID",
+				"type": "String"
+			},
+			{
+				"name": "CustomerName",
+				"type": "String"
+			},
+			{
+				"name": "Email",
+				"type": "String"
+			}
+		]
+	}
+}

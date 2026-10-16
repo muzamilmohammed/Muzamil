@@ -1,0 +1,415 @@
+Step 1: Create Amazon S3 Buckets
+(Equivalent to Azure Storage Account + Containers)
+•	Go to AWS Management Console → S3 → Create Bucket
+•	Create 2 buckets:
+o	datascience-input-bucket
+o	datascience-output-bucket
+•	Region: Choose one (Example: Asia Pacific (Mumbai) ap-south-1). This region has to be changed since snowflake does not have Mumbai region
+•	Keep Versioning: Optional (recommended ON for audit)
+•	Block public access: Keep ON
+•	Encryption: Enable SSE-S3 (server-side encryption)
+Bucket structure inside datascience-output-bucket (same as azure):
+bronze/
+silver/
+gold/
+
+Inside input bucket structure:
+csv_files/Full_load/yyyy/MMM/dd/
+Archive/
+
+Step 2: Create AWS Glue Job (CSV ➝ Parquet ➝ Date-based Output) 
+(Equivalent to Azure data factory + storing parquet file in bronze layer of output container)
+Create an IAM Role for AWS Glue
+1.	Go to IAM → Roles → Create Role
+2.	Select trusted entity: AWS service
+3.	Use case: Glue
+4.	Click Next
+5.	Attach permissions:
+o	AmazonS3FullAccess (or later restrict to specific buckets)
+o	AWSGlueServiceRole
+6.	Name it: Glue_DataScience_ETL_Role
+7.	Click Create Role
+Create the Glue Job
+1.	Go to AWS Glue Console → Jobs → Add Job (click on script editor)
+2.	Fill in:
+o	Name: CSV_to_Parquet_BronzeJob
+o	IAM Role: Glue_DataScience_ETL_Role (or name you have given to the role)
+o	Type: Spark
+o	Glue Version: 4.0 or latest
+o	Language: Python
+o	Worker type: Standard
+o	Number of workers: 2
+3.	Under Script file name & location:
+o	Create a new script or let Glue store it in a temporary S3 location.
+4.	Choose "A new script to be authored by you" and proceed to script editor.
+Paste This Glue Script
+import sys
+import boto3
+import os
+from datetime import datetime
+from awsglue.context import GlueContext
+from pyspark.context import SparkContext
+from pyspark.sql import SparkSession
+# Initialize Spark and Glue contexts
+sc = SparkContext()
+glueContext = GlueContext(sc)
+spark = glueContext.spark_session
+# Date for folder structure
+today = datetime.today()
+year = today.strftime("%Y")
+month = today.strftime("%b")
+day = today.strftime("%d")
+# S3 Setup
+input_bucket = "datascience-input-bucket"
+output_bucket = "datascience-output-bucket"
+input_prefix = f"csv_files/Full_load/{year}/{month}/{day}/"
+output_prefix = f"bronze/{year}/{month}/{day}/"
+temp_prefix = f"temp/"
+# S3 client
+s3 = boto3.client('s3')
+# List CSV files in input path
+response = s3.list_objects_v2(Bucket=input_bucket, Prefix=input_prefix)
+csv_files = [obj['Key'] for obj in response.get('Contents', []) if obj['Key'].endswith(".csv")]
+for key in csv_files:
+    filename = os.path.basename(key)                    # e.g., Orders_20250428.csv
+    base_name = filename.replace(".csv", "")            # e.g., Orders_20250428
+    input_path = f"s3://{input_bucket}/{key}"
+    temp_output_path = f"s3://{output_bucket}/{temp_prefix}{base_name}/"
+    final_parquet_key = f"{output_prefix}{base_name}.parquet"
+    # Read CSV
+    df = spark.read.option("header", True).csv(input_path)
+    # Write as single Parquet file to temp location
+    df.coalesce(1).write.mode("overwrite").parquet(temp_output_path)
+    # Find the part file in temp output
+    temp_objects = s3.list_objects_v2(Bucket=output_bucket, Prefix=f"{temp_prefix}{base_name}/")
+    parquet_key = None
+    for obj in temp_objects.get("Contents", []):
+        if obj["Key"].endswith(".parquet"):
+            parquet_key = obj["Key"]
+            break
+    # Copy to final destination with original filename
+    if parquet_key:
+        s3.copy_object(
+            Bucket=output_bucket,
+            CopySource={"Bucket": output_bucket, "Key": parquet_key},
+            Key=final_parquet_key
+        )
+    # Clean up temp directory
+    for obj in temp_objects.get("Contents", []):
+        s3.delete_object(Bucket=output_bucket, Key=obj["Key"])
+print("✅ All CSV files converted to Parquet and saved with original filenames.")
+Save and Run the Job
+1.	Click Save
+2.	Click Run Job
+3.	Wait and monitor from Glue → Jobs → Runs
+Once done, go to datascience-output-bucket/bronze/YYYY/MMM/DD/ to verify .parquet files
+Validate Output
+•	Open S3 → datascience-output-bucket
+•	Navigate to:
+•	bronze/2025/Apr/28/
+•	You should see .parquet files generated from your original CSV.
+
+Step 2a: Create AWS Glue Job (XML ➝ Parquet ➝ Date-based Output) 
+All will be same, just change the glue script as:
+import sys
+import boto3
+import os
+from datetime import datetime
+from awsglue.context import GlueContext
+from pyspark.context import SparkContext
+from pyspark.sql import SparkSession
+# Initialize Spark and Glue contexts
+sc = SparkContext()
+glueContext = GlueContext(sc)
+spark = glueContext.spark_session
+# Date for folder structure
+today = datetime.today()
+year = today.strftime("%Y")
+month = today.strftime("%b")
+day = today.strftime("%d")
+# S3 Setup
+input_bucket = "datascience-input-bucket"
+output_bucket = "datascience-output-bucket"
+input_prefix = f"xml_files/Full_load/{year}/{month}/{day}/"
+output_prefix = f"bronze/{year}/{month}/{day}/"
+temp_prefix = f"temp/"
+# S3 client
+s3 = boto3.client('s3')
+# List XML files in input path
+response = s3.list_objects_v2(Bucket=input_bucket, Prefix=input_prefix)
+xml_files = [obj['Key'] for obj in response.get('Contents', []) if obj['Key'].endswith(".xml")]
+for key in xml_files:
+    filename = os.path.basename(key)                    
+    base_name = filename.replace(".xml", "")            
+    input_path = f"s3://{input_bucket}/{key}"
+    temp_output_path = f"s3://{output_bucket}/{temp_prefix}{base_name}/"
+    final_parquet_key = f"{output_prefix}{base_name}.parquet"
+    # ✅ Read XML using Spark XML with rowTag = "row"
+    df = spark.read \
+        .format("com.databricks.spark.xml") \
+        .option("rowTag", "row") \
+        .load(input_path)
+    # Write as single Parquet file to temp location
+    df.coalesce(1).write.mode("overwrite").parquet(temp_output_path)
+    # Find the .parquet file in temp location
+    temp_objects = s3.list_objects_v2(Bucket=output_bucket, Prefix=f"{temp_prefix}{base_name}/")
+    parquet_key = None
+    for obj in temp_objects.get("Contents", []):
+        if obj["Key"].endswith(".parquet"):
+            parquet_key = obj["Key"]
+            break
+    # Copy to final destination with original filename
+    if parquet_key:
+        s3.copy_object(
+            Bucket=output_bucket,
+            CopySource={"Bucket": output_bucket, "Key": parquet_key},
+            Key=final_parquet_key
+        )
+    # Clean up temp directory
+    for obj in temp_objects.get("Contents", []):
+        s3.delete_object(Bucket=output_bucket, Key=obj["Key"])
+
+print("✅ All XML files converted to Parquet and saved with original filenames.")
+
+Apache Spark (the core engine) doesn't support XML out of the box — it natively supports: CSV, JSON, Parquet. ORC, Avro. So we need spark-xml to read xml files
+For this we need following steps:
+1. Download the Spark XML library from Maven:
+•	Version: spark-xml_2.12-0.15.0.jar
+•	📦 Download link:
+https://repo1.maven.org/maven2/com/databricks/spark-xml_2.12/0.15.0/spark-xml_2.12-0.15.0.jar
+2. Upload the JAR to an S3 Bucket
+Go to the AWS Console → S3
+Choose a bucket (e.g., datascience-input-bucket or any other)
+Upload the file to a folder like:
+s3://datascience-input-bucket /jars/spark-xml_2.12-0.15.0.jar
+3. Add the JAR Path to Your Glue Job
+1.	Go to AWS Glue → Jobs → Your Job → Edit
+2.	Scroll to Job parameters (optional). You can find it in actions tab then click “Run with parameters”
+3.	Add this key-value pair:
+Key	Value
+--extra-jars	     s3://datascience-input-bucket /jars/spark-xml_2.12-0.15.0.jar
+4. Save and return to your job. This will easily read your xml files. 
+Step 2b: Create AWS Glue Job (JSON ➝ Parquet ➝ Date-based Output) 
+import sys
+import boto3
+import os
+from datetime import datetime
+from awsglue.context import GlueContext
+from pyspark.context import SparkContext
+from pyspark.sql import SparkSession
+
+# Initialize Spark and Glue contexts
+sc = SparkContext()
+glueContext = GlueContext(sc)
+spark = glueContext.spark_session
+
+# Date for folder structure
+today = datetime.today()
+year = today.strftime("%Y")
+month = today.strftime("%b")
+day = today.strftime("%d")
+
+# S3 Setup
+input_bucket = "datascience-input-bucket"
+output_bucket = "datascience-output-bucket"
+input_prefix = f"json_files/Full_load/{year}/{month}/{day}/"
+output_prefix = f"bronze/json/{year}/{month}/{day}/"
+temp_prefix = f"temp/"
+
+# S3 client
+s3 = boto3.client('s3')
+
+# List JSON files in input path
+response = s3.list_objects_v2(Bucket=input_bucket, Prefix=input_prefix)
+json_files = [obj['Key'] for obj in response.get('Contents', []) if obj['Key'].endswith(".json")]
+
+for key in json_files:
+    filename = os.path.basename(key)                    
+    base_name = filename.replace(".json", "")            
+    input_path = f"s3://{input_bucket}/{key}"
+    temp_output_path = f"s3://{output_bucket}/{temp_prefix}{base_name}/"
+    final_parquet_key = f"{output_prefix}{base_name}.parquet"
+
+    # ✅ Read JSON file
+    df = spark.read.option("multiLine", True).json(input_path)
+
+
+    # Write as single Parquet file to temp location
+    df.coalesce(1).write.mode("overwrite").parquet(temp_output_path)
+
+    # Find the .parquet file
+    temp_objects = s3.list_objects_v2(Bucket=output_bucket, Prefix=f"{temp_prefix}{base_name}/")
+    parquet_key = None
+    for obj in temp_objects.get("Contents", []):
+        if obj["Key"].endswith(".parquet"):
+            parquet_key = obj["Key"]
+            break
+
+    # Copy to final destination with original filename
+    if parquet_key:
+        s3.copy_object(
+            Bucket=output_bucket,
+            CopySource={"Bucket": output_bucket, "Key": parquet_key},
+            Key=final_parquet_key
+        )
+
+    # Clean up temp directory
+    for obj in temp_objects.get("Contents", []):
+        s3.delete_object(Bucket=output_bucket, Key=obj["Key"])
+
+print("✅ All JSON files converted to Parquet and saved with original filenames.")
+
+Step 2c: Create AWS Glue Job (SQL ➝ Parquet ➝ Date-based Output) 
+import sys
+import boto3
+import os
+import re
+from datetime import datetime
+from pyspark.sql import Row
+from pyspark.context import SparkContext
+from awsglue.context import GlueContext
+
+# Init Spark/Glue
+sc = SparkContext()
+glueContext = GlueContext(sc)
+spark = glueContext.spark_session
+
+# Date structure
+today = datetime.today()
+year = today.strftime("%Y")
+month = today.strftime("%b")
+day = today.strftime("%d")
+
+# S3 paths
+input_bucket = "datascience-input-bucket"
+output_bucket = "datascience-output-bucket"
+input_prefix = f"sql_files/Full_load/{year}/{month}/{day}/"
+output_prefix = f"bronze/sql/{year}/{month}/{day}/"
+temp_prefix = f"temp/"
+
+s3 = boto3.client("s3")
+
+# List .sql files
+response = s3.list_objects_v2(Bucket=input_bucket, Prefix=input_prefix)
+sql_files = [obj["Key"] for obj in response.get("Contents", []) if obj["Key"].endswith(".sql")]
+
+for key in sql_files:
+    filename = os.path.basename(key)
+    base_name = filename.replace(".sql", "")
+    input_path = f"s3://{input_bucket}/{key}"
+    temp_output_path = f"s3://{output_bucket}/{temp_prefix}{base_name}/"
+    final_parquet_key = f"{output_prefix}{base_name}.parquet"
+
+    # Load file content
+    obj = s3.get_object(Bucket=input_bucket, Key=key)
+    raw_sql = obj["Body"].read().decode("utf-8")
+
+    # Extract all INSERT statements
+    insert_lines = [line.strip() for line in raw_sql.splitlines() if line.upper().startswith("INSERT INTO")]
+
+    # Extract column names from first insert
+    first_insert = insert_lines[0]
+    match = re.search(r"\((.*?)\)\s+VALUES", first_insert, re.IGNORECASE)
+    columns = [col.strip() for col in match.group(1).split(",")]
+
+    # Extract values from all insert lines
+    values = []
+    for line in insert_lines:
+        val_match = re.search(r"VALUES\s*\((.*?)\);?$", line, re.IGNORECASE)
+        if val_match:
+            raw_vals = val_match.group(1)
+            parsed_vals = []
+            for val in re.split(r",(?![^']*')", raw_vals):  # split on commas outside quotes
+                val = val.strip().strip("'")
+                parsed_vals.append(val)
+            values.append(parsed_vals)
+
+    # Convert to DataFrame
+    rows = [Row(**dict(zip(columns, vals))) for vals in values]
+    df = spark.createDataFrame(rows)
+
+    # Write Parquet
+    df.coalesce(1).write.mode("overwrite").parquet(temp_output_path)
+
+    # Rename to original file name
+    temp_objects = s3.list_objects_v2(Bucket=output_bucket, Prefix=f"{temp_prefix}{base_name}/")
+    parquet_key = next((obj["Key"] for obj in temp_objects.get("Contents", []) if obj["Key"].endswith(".parquet")), None)
+
+    if parquet_key:
+        s3.copy_object(
+            Bucket=output_bucket,
+            CopySource={"Bucket": output_bucket, "Key": parquet_key},
+            Key=final_parquet_key
+        )
+
+    # Clean up temp files
+    for obj in temp_objects.get("Contents", []):
+        s3.delete_object(Bucket=output_bucket, Key=obj["Key"])
+
+print("✅ SQL file parsed and saved as Parquet.")
+
+
+Step 3: Automate AWS Glue Job 
+(Equivalent to event trigger in Microsoft azure)
+Create a Lambda Function to Trigger the Glue Job
+1.	Go to AWS Console → Lambda → Create function
+2.	Choose Author from scratch
+3.	Fill in:
+o	Function name: trigger_glue_on_upload
+o	Runtime: Python 3.12 (or latest)
+o	Execution role:
+Choose an existing role or create a new one with:
+	AWSGlueConsoleFullAccess
+	AWSLambdaBasicExecutionRole
+Attach S3 Trigger to Lambda
+1.	In the Lambda function page, go to “Triggers” → Add Trigger
+2.	Choose S3
+3.	Configure:
+o	Bucket: datascience-input-bucket
+o	Event type: PUT
+o	Prefix: csv_files/Full_load/
+o	Suffix: .csv
+4.	Click Add
+"Trigger this Lambda every time a .csv file is added under that folder structure."
+Lambda Code to Trigger Glue Job
+Replace the default code with this:
+import boto3
+
+def lambda_handler(event, context):
+    glue = boto3.client('glue') 
+    response = glue.start_job_run(
+        JobName='csv-to-prquet'  # your exact job name
+    )
+    
+    print("Glue job triggered:", response['JobRunId'])
+    return {
+        'statusCode': 200,
+        'body': 'Glue job started successfully'
+    }
+Save the function.
+Add Permissions to Lambda Role
+1.	Go to IAM → Roles
+2.	Open the Lambda execution role used above
+3.	Attach this inline policy:
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": "glue:StartJobRun",
+      "Resource": "*"
+    }
+  ]
+}
+This allows Lambda to run your Glue job.
+Final Test
+1.	Upload a new file to:
+s3://datascience-input-bucket/csv_files/Full_load/2025/Jun/20/Customers_20250620.csv
+2.	Go to:
+o	AWS Lambda → Monitor → Logs (CloudWatch) to see the function was triggered
+o	AWS Glue → Job Runs to see your job ran automatically
+
+Step 4: Secure Snowflake-AWS credentials 
+(Equivalent to key vault in azure) 
+
+

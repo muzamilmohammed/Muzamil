@@ -1,0 +1,72 @@
+Integrating AWS S3 with Snowflake
+Step 1: Create IAM Role
+1.	Go to home screen and search IAM  Roles  Create Roles
+2.	Trusted entity type: AWS Account
+3.	Select This Account
+4.	In options select “Require External ID”
+5.	Give some external id like: 12345
+6.	Click on: Next
+7.	Search S3 in permission policies and give Amazon S3 Full Access
+8.	Click on next
+9.	Give role name as: “snowflake-integration” and give description if needed
+10.	Leave everything as it is and click on create role.
+
+Step 2: Create a S3 bucket
+1.	Search for S3 in search bar and click on S3  Create Bucket
+2.	Give it a name as: “datascience-output-bucket”
+3.	Uncheck the name which says Block all public access
+4.	Check the acknowledgement
+5.	Click on Create Bucket.
+6.	In the bucket make a folder (say “general-files”) and upload some csv files.
+Step 3: Working with Snowflake
+1.	Login to your snowflake account with same location as of aws and open a new sql worksheet.
+2.	use role accountadmin; - write in worksheet and run 
+3.	Now use the following code:
+CREATE STORAGE INTEGRATION aws_snowflake_connect
+    TYPE = EXTERNAL_STAGE
+    STORAGE_PROVIDER = S3
+    ENABLED = TRUE
+    STORAGE_AWS_ROLE_ARN = 'arn:aws:iam::499089851270:role/snowflake-integration'
+    STORAGE_ALLOWED_LOCATIONS = ('s3://datascience-output-bucket');
+4.	Now run this code and you will see: “aws_snowflake_connect successfully created”
+5.	For STORAGE_AWS_ROLE_ARN, go to your role created earlier (snowflake-integration)
+6.	From here you can copy the ARN and pate it in snowflake.
+7.	For STORAGE_ALLOWED_LOCATIONS you can use ('s3://{your-bucket-name}')
+Step 4: Going back to AWS
+1.	Now write this code in snowflake to describe integration:
+desc INTEGRATION aws_snowflake_connect
+2.	From here you have to select 2 values i.e. STORAGE_AWS_IAM_USER_ARN (arn:aws:iam::122610483799:user/bga21000-s) and STORAGE_AWS_EXTERNAL_ID (DO44265_SFCRole=5_8tfDzwxWaT2SQkZ2fXfux347cP8=)
+3.	Now, in aws, go to the role we created and click on “Trust Relationships”.
+4.	Now go to edit trust policy and do the modifications in the policy by pasting the arn under Principal and in “AWS” part.
+5.	Now copy the external id from snowflake, go back to aws and paste it to external_id part in the same trust policy (where you have previously used 12345).
+6.	Click on “Update Policy”.
+7.	This we have created an integration object and granted access to S3 bucket and by editing the trust policy we are authenticating the snowflake to access the objects present on S3 bucket.
+Step 5: Going back to Snowflake
+1.	Now open a new worksheet and select database and schema you created earlier from drop down menu on top of worksheet
+2.	Now write down the code as:
+USE DATABASE DEV;
+USE SCHEMA DATASCIENCE;
+3.	Now run each code step by step as:
+CREATE OR REPLACE FILE FORMAT my_csv_format
+TYPE = 'CSV'
+FIELD_DELIMITER = ','
+SKIP_HEADER = 1
+FIELD_OPTIONALLY_ENCLOSED_BY = '"';
+
+CREATE OR REPLACE STAGE customer_stage
+URL = 's3://datascience-output-bucket/general-csv'
+STORAGE_INTEGRATION = aws_snowflake_connect
+FILE_FORMAT = my_csv_format;
+
+CREATE OR REPLACE TABLE customers (
+customer_id   INT,
+customer_name STRING,
+start_date    TIMESTAMP_NTZ
+);
+
+COPY INTO customers
+FROM @customer_stage/Customers_20250504_121008.csv
+FILE_FORMAT = (FORMAT_NAME = my_csv_format);
+
+4.	Now you can access your data with this command:
+SELECT * FROM customers LIMIT 10;

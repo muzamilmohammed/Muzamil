@@ -1,0 +1,9 @@
+{
+	"name": "datascience-adf",
+	"location": "southeastasia",
+	"identity": {
+		"type": "SystemAssigned",
+		"principalId": "1abf1a1a-44d0-450e-a497-5b3df0a3bb2a",
+		"tenantId": "21767db5-3479-4e54-bc1d-dc64424eb89f"
+	}
+}
